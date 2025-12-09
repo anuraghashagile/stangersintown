@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
 import { clsx } from 'clsx';
@@ -6,7 +7,6 @@ import { Smile, Pencil, Check, CheckCheck } from 'lucide-react';
 interface MessageBubbleProps {
   message: Message;
   senderName?: string;
-  textSize?: 'small' | 'medium' | 'large';
   onReact?: (emoji: string) => void;
   onEdit?: (messageId: string, text: string) => void;
 }
@@ -16,7 +16,6 @@ const PRESET_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ 
   message, 
   senderName, 
-  textSize = 'medium', 
   onReact,
   onEdit
 }) => {
@@ -36,12 +35,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const isMe = message.sender === 'me';
   const displayName = isMe ? 'You' : (senderName || 'Stranger');
-
-  const textSizeClass = {
-    small: 'text-xs',
-    medium: 'text-[15px]',
-    large: 'text-lg'
-  }[textSize];
 
   const handleTouchStart = () => {
     const timer = setTimeout(() => {
@@ -154,7 +147,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
           >
             {message.type === 'text' && (
-              <div className={clsx("px-5 py-3 leading-relaxed break-words whitespace-pre-wrap relative", textSizeClass)}>
+              <div className={clsx("px-5 py-3 leading-relaxed break-words whitespace-pre-wrap relative text-[15px]")}>
                 {message.text}
                 {message.isEdited && (
                   <span className="text-[10px] text-slate-400 dark:text-slate-300 italic ml-2 opacity-70">

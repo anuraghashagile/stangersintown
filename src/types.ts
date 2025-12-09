@@ -1,5 +1,4 @@
 
-
 export enum ChatMode {
   IDLE = 'IDLE',
   SEARCHING = 'SEARCHING',
@@ -76,8 +75,6 @@ export interface FriendRequest {
 }
 
 export interface AppSettings {
-  soundEnabled: boolean;
-  textSize: 'small' | 'medium' | 'large';
   vanishMode: boolean;
 }
 

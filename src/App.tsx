@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, RefreshCw, EyeOff, Shield, Image as ImageIcon, Mic, X, Square, AlertTriangle, UserPlus, Check, Bell } from 'lucide-react';
 import { supabase, saveMessageToHistory, fetchChatHistory } from './lib/supabase';
@@ -15,7 +14,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { SocialHub } from './components/SocialHub';
 import { EditMessageModal } from './components/EditMessageModal';
 import Loader from './components/Loader';
-import { NOTIFICATION_SOUND } from './constants';
 import { clsx } from 'clsx';
 
 // Simple user ID persistence
@@ -53,8 +51,6 @@ export default function App() {
   
   // App Settings State
   const [settings, setSettings] = useState<AppSettings>({
-    soundEnabled: true,
-    textSize: 'medium',
     vanishMode: false
   });
 
@@ -75,7 +71,6 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Track previous online users to detect new logins
   const prevOnlineUserIds = useRef<Set<string>>(new Set());
@@ -130,29 +125,6 @@ export default function App() {
       }
     }
   }, []); // Run once on mount
-
-  // --- SOUND EFFECTS ---
-  useEffect(() => {
-    audioRef.current = new Audio(NOTIFICATION_SOUND);
-    audioRef.current.volume = 0.5;
-  }, []);
-
-  const playSound = () => {
-    if (settings.soundEnabled && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.log("Audio play blocked", e));
-    }
-  };
-
-  useEffect(() => {
-    if (status === ChatMode.CONNECTED) playSound();
-  }, [status]);
-
-  useEffect(() => {
-    if (messages.length > 0 && messages[messages.length - 1].sender === 'stranger') {
-      playSound();
-    }
-  }, [messages]);
 
   // --- SYNC VANISH MODE ---
   useEffect(() => {
@@ -221,7 +193,6 @@ export default function App() {
         if (currentOnlineIds.has(friend.id) && !prevOnlineUserIds.current.has(friend.id)) {
           // Trigger notification
           setFriendNotification(`${friend.profile.username} is now online!`);
-          playSound(); // Optional sound for friend
           setTimeout(() => setFriendNotification(null), 4000);
         }
       });
@@ -421,7 +392,6 @@ export default function App() {
                 <MessageBubble 
                     message={msg} 
                     senderName={partnerProfile?.username} 
-                    textSize={settings.textSize}
                     onReact={(emoji) => sendReaction(msg.id, emoji)}
                     onEdit={initiateEdit}
                 />
