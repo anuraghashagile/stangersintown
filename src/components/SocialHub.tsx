@@ -21,13 +21,14 @@ interface SocialHubProps {
   sendDirectAudio?: (peerId: string, base64: string, id?: string) => void;
   sendDirectTyping?: (peerId: string, isTyping: boolean) => void;
   sendDirectFriendRequest?: (peerId: string) => void; 
+  sendDirectReaction?: (peerId: string, messageId: string, emoji: string) => void;
   sendReaction?: (messageId: string, emoji: string) => void;
   currentPartner: UserProfile | null;
   chatStatus: ChatMode;
   error?: string | null;
   onEditMessage?: (id: string, text: string) => void;
   sessionType: SessionType;
-  incomingReaction?: { messageId: string, emoji: string, sender: 'stranger' } | null;
+  incomingReaction?: { peerId: string, messageId: string, emoji: string, sender: 'stranger' } | null;
   incomingDirectMessage?: DirectMessageEvent | null;
   incomingDirectStatus?: DirectStatusEvent | null;
   onCloseDirectChat?: () => void;
@@ -36,6 +37,7 @@ interface SocialHubProps {
   removeFriend?: (peerId: string) => void;
   acceptFriendRequest?: (request: FriendRequest) => void;
   rejectFriendRequest?: (peerId: string) => void;
+  isPeerConnected?: (peerId: string) => boolean;
 }
 
 export const SocialHub: React.FC<SocialHubProps> = ({ 
@@ -52,6 +54,7 @@ export const SocialHub: React.FC<SocialHubProps> = ({
   sendDirectAudio,
   sendDirectTyping,
   sendDirectFriendRequest,
+  sendDirectReaction,
   sendReaction,
   currentPartner,
   chatStatus,
@@ -66,7 +69,8 @@ export const SocialHub: React.FC<SocialHubProps> = ({
   friendRequests = [],
   removeFriend,
   acceptFriendRequest,
-  rejectFriendRequest
+  rejectFriendRequest,
+  isPeerConnected
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'online' | 'recent' | 'global' | 'friends'>('online');
@@ -159,18 +163,36 @@ export const SocialHub: React.FC<SocialHubProps> = ({
   }, [incomingDirectMessage, activePeer]);
 
   useEffect(() => {
-    if (incomingReaction && activePeer) {
-      setLocalChatHistory(prev => {
-        const updated = prev.map(msg => {
-           if (msg.id === incomingReaction.messageId) {
-             if (msg.reactions?.some(r => r.emoji === incomingReaction.emoji && r.sender === 'stranger')) return msg;
-             return { ...msg, reactions: [...(msg.reactions || []), { emoji: incomingReaction.emoji, sender: 'stranger' as const }] };
-           }
-           return msg;
-        });
-        localStorage.setItem(`chat_history_${activePeer.id}`, JSON.stringify(updated));
-        return updated;
-      });
+    if (incomingReaction) {
+      const targetPeerId = incomingReaction.peerId;
+      // Only process if it matches active peer OR update storage
+      if (activePeer && activePeer.id === targetPeerId) {
+         setLocalChatHistory(prev => {
+            const updated = prev.map(msg => {
+               if (msg.id === incomingReaction.messageId) {
+                 if (msg.reactions?.some(r => r.emoji === incomingReaction.emoji && r.sender === 'stranger')) return msg;
+                 return { ...msg, reactions: [...(msg.reactions || []), { emoji: incomingReaction.emoji, sender: 'stranger' as const }] };
+               }
+               return msg;
+            });
+            localStorage.setItem(`chat_history_${targetPeerId}`, JSON.stringify(updated));
+            return updated;
+         });
+      } else {
+         // Update background storage
+         const storageKey = `chat_history_${targetPeerId}`;
+         try {
+            const hist = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            const updated = hist.map((msg: Message) => {
+               if (msg.id === incomingReaction.messageId) {
+                  if (msg.reactions?.some((r: any) => r.emoji === incomingReaction.emoji && r.sender === 'stranger')) return msg;
+                  return { ...msg, reactions: [...(msg.reactions || []), { emoji: incomingReaction.emoji, sender: 'stranger' as const }] };
+               }
+               return msg;
+            });
+            localStorage.setItem(storageKey, JSON.stringify(updated));
+         } catch(e) {}
+      }
     }
   }, [incomingReaction, activePeer]);
 
@@ -276,14 +298,19 @@ export const SocialHub: React.FC<SocialHubProps> = ({
   };
 
   const handleReactionSend = (messageId: string, emoji: string) => {
+    // If activePeer is set, this comes from the Friend chat
     if (activePeer) {
       setLocalChatHistory(prev => {
          const updated = prev.map(msg => msg.id === messageId ? { ...msg, reactions: [...(msg.reactions || []), { emoji, sender: 'me' as const }] } : msg);
          localStorage.setItem(`chat_history_${activePeer.id}`, JSON.stringify(updated));
          return updated;
       });
+      // Use direct reaction sending
+      sendDirectReaction?.(activePeer.id, messageId, emoji);
+    } else {
+      // Otherwise it's the main chat
+      sendReaction?.(messageId, emoji);
     }
-    sendReaction?.(messageId, emoji);
   };
 
   const openPrivateChat = (peerId: string, profile?: UserProfile) => {
@@ -327,7 +354,6 @@ export const SocialHub: React.FC<SocialHubProps> = ({
      return Object.values(unreadCounts).reduce((a, b) => a + b, 0) + friendRequests.length;
   };
 
-  // Derived state for friend lists
   const onlineFriends = friends.filter(f => onlineUsers.some(u => u.peerId === f.id));
   const offlineFriends = friends.filter(f => !onlineUsers.some(u => u.peerId === f.id));
 

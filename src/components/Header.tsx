@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Theme Toggle */}
           <button 
             onClick={toggleTheme}
-            className="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors hidden sm:block"
+            className="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
           >
             {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
           </button>

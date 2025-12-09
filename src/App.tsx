@@ -62,8 +62,8 @@ export default function App() {
 
   const { 
     messages, setMessages, status, partnerTyping, partnerRecording, partnerProfile, partnerPeerId, remoteVanishMode,
-    onlineUsers, myPeerId, error, friends, friendRequests, removeFriend, incomingReaction, incomingDirectMessage, incomingDirectStatus,
-    sendMessage, sendDirectMessage, sendDirectImage, sendDirectAudio, sendDirectTyping, sendDirectFriendRequest, 
+    onlineUsers, myPeerId, error, friends, friendRequests, removeFriend, incomingReaction, incomingDirectMessage, incomingDirectStatus, isPeerConnected,
+    sendMessage, sendDirectMessage, sendDirectImage, sendDirectAudio, sendDirectTyping, sendDirectFriendRequest, sendDirectReaction,
     sendImage, sendAudio, sendReaction, editMessage, sendTyping, sendRecording, updateMyProfile, sendVanishMode,
     sendFriendRequest, acceptFriendRequest, rejectFriendRequest, connect, callPeer, disconnect 
   } = useHumanChat(userProfile, userId);
@@ -153,7 +153,8 @@ export default function App() {
     setUserProfile(profile);
     setShowJoinModal(false);
     setSessionType('random');
-    // Lobby connection handles "Online", click New Chat to start searching
+    // We intentionally DO NOT call connect() here. 
+    // User lands in lobby (online/idle) and must click "Find New Stranger" to search.
   };
 
   const handleUpdateProfile = (profile: UserProfile) => {
@@ -203,8 +204,11 @@ export default function App() {
   const handleNewChat = () => {
     setSessionType('random'); 
     disconnect();
-    // Immediate reconnect call, lobby logic handles the rest
-    connect();
+    // Immediate reconnect call to start searching
+    // status goes IDLE -> SEARCHING
+    setTimeout(() => {
+       connect();
+    }, 100);
   };
 
   const initiateEdit = (id: string, text: string) => { setEditingMessage({ id, text }); };
@@ -480,6 +484,7 @@ export default function App() {
           sendDirectAudio={sendDirectAudio}
           sendDirectTyping={sendDirectTyping}
           sendDirectFriendRequest={sendDirectFriendRequest}
+          sendDirectReaction={sendDirectReaction}
           sendReaction={sendReaction}
           currentPartner={partnerProfile}
           chatStatus={status}
@@ -495,6 +500,7 @@ export default function App() {
           removeFriend={removeFriend}
           acceptFriendRequest={acceptFriendRequest}
           rejectFriendRequest={rejectFriendRequest}
+          isPeerConnected={isPeerConnected}
         />
       )}
     </div>
