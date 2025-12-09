@@ -35,7 +35,7 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
 
   // Friend System State
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [incomingFriendRequest, setIncomingFriendRequest] = useState<FriendRequest | null>(null);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   
   // --- REFS ---
   const peerRef = useRef<Peer | null>(null);
@@ -67,6 +67,30 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
     };
     loadFriends();
   }, []);
+
+  // --- UPDATE FRIENDS PRESENCE (LAST SEEN) ---
+  useEffect(() => {
+    if (onlineUsers.length === 0 || friends.length === 0) return;
+
+    let updated = false;
+    const onlinePeerIds = new Set(onlineUsers.map(u => u.peerId));
+    
+    const newFriends = friends.map(friend => {
+      if (onlinePeerIds.has(friend.id)) {
+        // If online, update last seen to NOW
+        if (Date.now() - (friend.lastSeen || 0) > 60000) { // Throttle updates (1 min)
+           updated = true;
+           return { ...friend, lastSeen: Date.now() };
+        }
+      }
+      return friend;
+    });
+
+    if (updated) {
+       setFriends(newFriends);
+       localStorage.setItem('chat_friends', JSON.stringify(newFriends));
+    }
+  }, [onlineUsers, friends]);
 
   // --- PERSIST RECENT PEERS ---
   const saveToRecent = useCallback((profile: UserProfile, peerId: string) => {
@@ -109,12 +133,16 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
       const newFriend: Friend = {
         id: peerId, 
         profile,
-        addedAt: Date.now()
+        addedAt: Date.now(),
+        lastSeen: Date.now()
       };
 
       friendList.unshift(newFriend);
       localStorage.setItem(key, JSON.stringify(friendList));
       setFriends(friendList);
+      
+      // Remove from requests if exists
+      setFriendRequests(prev => prev.filter(req => req.peerId !== peerId));
     } catch (e) {
       console.warn("Failed to save friend", e);
     }
@@ -134,6 +162,10 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
       console.warn("Failed to remove friend", e);
     }
   }, []);
+  
+  const rejectFriendRequest = useCallback((peerId: string) => {
+     setFriendRequests(prev => prev.filter(req => req.peerId !== peerId));
+  }, []);
 
   // --- CLEANUP ---
   const cleanupMain = useCallback(() => {
@@ -146,8 +178,14 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
 
     // 2. Close Peer Connection
     if (mainConnRef.current) {
-      try { mainConnRef.current.close(); } catch (e) {}
-      mainConnRef.current = null;
+      // Try to send goodbye packet
+      try { mainConnRef.current.send({ type: 'disconnect' }); } catch(e) {}
+      setTimeout(() => {
+         try { mainConnRef.current?.close(); } catch (e) {}
+         mainConnRef.current = null;
+      }, 100);
+    } else {
+       mainConnRef.current = null;
     }
 
     if (connectionTimeoutRef.current) {
@@ -259,7 +297,9 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
         setPartnerProfile(data.payload);
         saveToRecent(data.payload, conn.peer);
         setMessages(prev => prev.map(msg => {
-          if (msg.id === 'init-1') return { ...msg, text: `Connected with ${data.payload.username}. Say hello!` };
+          if (msg.id === 'init-1') {
+             return { ...msg, text: `Connected with ${data.payload.username}. Say hello!` };
+          }
           return msg;
         }));
       } else {
@@ -272,7 +312,13 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
 
     // 8. FRIEND REQUESTS
     } else if (data.type === 'friend_request') {
-      setIncomingFriendRequest({ profile: data.payload, peerId: conn.peer });
+      // Check if already friends
+      if (!friends.some(f => f.id === conn.peer)) {
+         setFriendRequests(prev => {
+            if (prev.some(req => req.peerId === conn.peer)) return prev;
+            return [...prev, { profile: data.payload, peerId: conn.peer }];
+         });
+      }
 
     } else if (data.type === 'friend_accept') {
       saveFriend(data.payload, conn.peer);
@@ -282,14 +328,14 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
       if (isMain) {
         setStatus(ChatMode.DISCONNECTED);
         setMessages([]); // Clear chat history on disconnect
-        mainConnRef.current?.close();
+        try { mainConnRef.current?.close(); } catch(e) {}
         mainConnRef.current = null;
         setPartnerPeerId(null);
       } else {
         directConnsRef.current.delete(conn.peer);
       }
     }
-  }, [saveToRecent, saveFriend]);
+  }, [saveToRecent, saveFriend, friends]);
 
   // --- CONNECTION SETUP ---
   const setupConnection = useCallback((conn: DataConnection, metadata: ConnectionMetadata) => {
@@ -399,7 +445,7 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
     setPartnerProfile(null);
     setRemoteVanishMode(null);
     setError(null);
-    setIncomingFriendRequest(null);
+    setFriendRequests([]);
     isMatchmakerRef.current = false;
     
     const peer = initPeer();
@@ -425,6 +471,9 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
     });
     channelRef.current = channel;
 
+    // Fast-path: check immediately before subscribe if possible? 
+    // Supabase needs to subscribe first to get sync.
+    
     channel
       .on('presence', { event: 'sync' }, () => {
         const newState = channel.presenceState();
@@ -439,11 +488,13 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
 
         const oldestWaiter = sortedWaiters[0];
 
+        // Only the oldest waiter initiates connection to avoid collision
         if (oldestWaiter && oldestWaiter.peerId !== myId) {
            console.log("Found partner. Connecting:", oldestWaiter.peerId);
            isMatchmakerRef.current = true;
            
            try {
+             // Connect aggressively
              const conn = peerRef.current?.connect(oldestWaiter.peerId, { 
                reliable: true,
                metadata: { type: 'random' } 
@@ -452,13 +503,16 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
              if (conn) {
                setupConnection(conn, { type: 'random' });
                
+               // Short timeout for connection establishment
                if (connectionTimeoutRef.current) clearTimeout(connectionTimeoutRef.current);
                connectionTimeoutRef.current = setTimeout(() => {
                  if (isMatchmakerRef.current && (!mainConnRef.current || !mainConnRef.current.open)) {
+                   console.log("Connection timed out, retrying...");
                    isMatchmakerRef.current = false;
                    mainConnRef.current = null;
+                   // Re-trigger sync implicitly or wait for next presence update
                  }
-               }, 8000);
+               }, 6000); // Reduced from 8s
              } else {
                isMatchmakerRef.current = false;
              }
@@ -714,20 +768,34 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
     }
   }, [status, userProfile]);
 
-  const acceptFriendRequest = useCallback(() => {
-    if (incomingFriendRequest && userProfile) {
-      saveFriend(incomingFriendRequest.profile, incomingFriendRequest.peerId);
+  const acceptFriendRequest = useCallback((request?: FriendRequest) => {
+    // If request passed, use it, otherwise use first from list (legacy compat)
+    const target = request || friendRequests[0];
+    
+    if (target && userProfile) {
+      saveFriend(target.profile, target.peerId);
       
-      const directConn = directConnsRef.current.get(incomingFriendRequest.peerId);
+      const directConn = directConnsRef.current.get(target.peerId);
       if (directConn && directConn.open) {
          directConn.send({ type: 'friend_accept', payload: userProfile });
-      } else if (mainConnRef.current?.peer === incomingFriendRequest.peerId) {
+      } else if (mainConnRef.current?.peer === target.peerId) {
          mainConnRef.current.send({ type: 'friend_accept', payload: userProfile });
+      } else {
+         // Try to connect briefly to accept
+         try {
+           const conn = peerRef.current?.connect(target.peerId, { reliable: true });
+           if (conn) {
+             conn.on('open', () => {
+                conn.send({ type: 'friend_accept', payload: userProfile });
+                setTimeout(() => conn.close(), 1000); // Close after sending accept
+             });
+           }
+         } catch(e) {}
       }
       
-      setIncomingFriendRequest(null);
+      setFriendRequests(prev => prev.filter(req => req.peerId !== target.peerId));
     }
-  }, [incomingFriendRequest, userProfile, saveFriend]);
+  }, [friendRequests, userProfile, saveFriend]);
 
   const disconnect = useCallback(() => {
     if (partnerProfile && mainConnRef.current?.peer) {
@@ -740,13 +808,18 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
   // Clean up PeerJS on page unload to allow ID reuse
   useEffect(() => {
     const handleBeforeUnload = () => {
+      // Send quick disconnect signals
+      try { mainConnRef.current?.send({ type: 'disconnect' }); } catch(e) {}
       peerRef.current?.destroy();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       cleanupMain();
-      directConnsRef.current.forEach(c => c.close());
+      directConnsRef.current.forEach(c => {
+         try { c.send({ type: 'disconnect' }); } catch(e) {}
+         c.close();
+      });
       directConnsRef.current.clear();
       peerRef.current?.destroy();
     };
@@ -765,8 +838,9 @@ export const useHumanChat = (userProfile: UserProfile | null, persistentId?: str
     myPeerId,
     error,
     friends,
+    friendRequests,
     removeFriend,
-    incomingFriendRequest,
+    rejectFriendRequest,
     incomingReaction,
     incomingDirectMessage, 
     incomingDirectStatus,

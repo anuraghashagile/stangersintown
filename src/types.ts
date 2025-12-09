@@ -68,6 +68,7 @@ export interface Friend {
   id: string; // unique ID or peer ID used when adding
   profile: UserProfile;
   addedAt: number;
+  lastSeen?: number; // Added for Last Seen functionality
 }
 
 export interface FriendRequest {

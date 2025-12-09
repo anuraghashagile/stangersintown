@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Users, History, Globe, MessageCircle, X, Wifi, Heart, ArrowLeft, Send, UserPlus, Check, Trash2, Image as ImageIcon, Mic, Square, MapPin, Smile } from 'lucide-react';
-import { UserProfile, PresenceState, RecentPeer, Message, ChatMode, SessionType, Friend, DirectMessageEvent, DirectStatusEvent } from '../types';
+import { Users, History, Globe, MessageCircle, X, Wifi, Heart, ArrowLeft, Send, UserPlus, Check, Trash2, Image as ImageIcon, Mic, Square, MapPin, Smile, UserCheck } from 'lucide-react';
+import { UserProfile, PresenceState, RecentPeer, Message, ChatMode, SessionType, Friend, FriendRequest, DirectMessageEvent, DirectStatusEvent } from '../types';
 import { clsx } from 'clsx';
 import { MessageBubble } from './MessageBubble';
 import { Button } from './Button';
@@ -32,7 +32,10 @@ interface SocialHubProps {
   incomingDirectStatus?: DirectStatusEvent | null;
   onCloseDirectChat?: () => void;
   friends?: Friend[]; // Accept friends as prop
+  friendRequests?: FriendRequest[];
   removeFriend?: (peerId: string) => void;
+  acceptFriendRequest?: (request: FriendRequest) => void;
+  rejectFriendRequest?: (peerId: string) => void;
 }
 
 export const SocialHub: React.FC<SocialHubProps> = ({ 
@@ -60,7 +63,10 @@ export const SocialHub: React.FC<SocialHubProps> = ({
   incomingDirectStatus,
   onCloseDirectChat,
   friends: friendsProp = [],
-  removeFriend
+  friendRequests = [],
+  removeFriend,
+  acceptFriendRequest,
+  rejectFriendRequest
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'online' | 'recent' | 'global' | 'friends'>('online');
@@ -460,7 +466,19 @@ export const SocialHub: React.FC<SocialHubProps> = ({
     return friends.some(f => f.id === peerId);
   };
 
-  const getTotalUnreadCount = () => Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  const formatLastSeen = (timestamp?: number) => {
+     if (!timestamp) return 'Offline';
+     const diff = Date.now() - timestamp;
+     if (diff < 60000) return 'Just now';
+     if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+     if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+     return new Date(timestamp).toLocaleDateString();
+  };
+
+  const getTotalUnreadCount = () => {
+     const msgs = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+     return msgs + friendRequests.length; // Include friend requests in badge count
+  };
 
   // --- RENDER CONTENT ---
   
@@ -508,7 +526,7 @@ export const SocialHub: React.FC<SocialHubProps> = ({
                           </span>
                        ) : (
                           <span className="text-xs text-slate-400 font-medium">
-                             Offline
+                             Last seen {formatLastSeen(friends.find(f => f.id === activePeer.id)?.lastSeen)}
                           </span>
                        )}
                      </div>
@@ -635,7 +653,7 @@ export const SocialHub: React.FC<SocialHubProps> = ({
                          {tab === 'global' && <Globe size={14} />}
                          {tab}
                          
-                         {tab === 'friends' && friends.some(f => unreadCounts[f.id] > 0) && (
+                         {tab === 'friends' && (friends.some(f => unreadCounts[f.id] > 0) || friendRequests.length > 0) && (
                             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
                          )}
                          {tab === 'recent' && recentPeers.some(p => unreadCounts[p.peerId] > 0) && (
@@ -693,6 +711,42 @@ export const SocialHub: React.FC<SocialHubProps> = ({
                   {/* --- FRIENDS TAB --- */}
                   {activeTab === 'friends' && (
                      <div className="space-y-3">
+                       
+                       {/* FRIEND REQUESTS SECTION */}
+                       {friendRequests.length > 0 && (
+                          <div className="mb-4 space-y-2">
+                             <div className="text-xs font-bold text-brand-500 uppercase tracking-widest pl-1 mb-2">Friend Requests</div>
+                             {friendRequests.map((req, idx) => (
+                                <div key={idx} className="p-3 bg-brand-500/5 border border-brand-500/20 rounded-xl flex items-center justify-between">
+                                   <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center font-bold text-xs">
+                                         {req.profile.username[0].toUpperCase()}
+                                      </div>
+                                      <div>
+                                         <div className="text-sm font-bold text-slate-900 dark:text-white">{req.profile.username}</div>
+                                         <div className="text-[10px] text-slate-500">Wants to be friends</div>
+                                      </div>
+                                   </div>
+                                   <div className="flex gap-2">
+                                      <button 
+                                        onClick={() => acceptFriendRequest && acceptFriendRequest(req)}
+                                        className="p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600"
+                                      >
+                                        <Check size={14} />
+                                      </button>
+                                      <button 
+                                        onClick={() => rejectFriendRequest && rejectFriendRequest(req.peerId)}
+                                        className="p-1.5 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )}
+
+                       {/* FRIENDS LIST */}
                        {friends.map((friend) => (
                          <div 
                            key={friend.id} 
@@ -711,7 +765,11 @@ export const SocialHub: React.FC<SocialHubProps> = ({
                                  {friend.profile.username}
                                </div>
                                <div className="text-xs text-slate-500">
-                                  Added {new Date(friend.addedAt).toLocaleDateString()}
+                                  {onlineUsers.some(u => u.peerId === friend.id) ? (
+                                     <span className="text-emerald-500 font-medium">Online</span>
+                                  ) : (
+                                     <span>Last seen {formatLastSeen(friend.lastSeen)}</span>
+                                  )}
                                </div>
                              </div>
                            </div>
@@ -720,7 +778,7 @@ export const SocialHub: React.FC<SocialHubProps> = ({
                            </div>
                          </div>
                        ))}
-                       {friends.length === 0 && (
+                       {friends.length === 0 && friendRequests.length === 0 && (
                          <div className="text-center py-10">
                             <div className="w-16 h-16 bg-slate-100 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
                                <UserPlus size={24} />

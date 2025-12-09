@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { ArrowRight, Ghost, Shield, Check, AlertCircle, FileText, X, Sun, Moon, Infinity } from 'lucide-react';
 import { Button } from './Button';
@@ -64,8 +65,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onlineCount, onStart, 
       {/* --- NAVBAR --- */}
       <nav className="relative z-10 p-4 sm:p-6 flex justify-between items-center max-w-6xl mx-auto w-full">
         <div className="flex items-center gap-3 group cursor-pointer">
-           <div className="bg-white/60 dark:bg-white/10 p-2 rounded-xl backdrop-blur-md border border-slate-200 dark:border-white/5 group-hover:bg-white/80 dark:group-hover:bg-white/20 transition-all shadow-sm">
-             <img src="https://i.ibb.co/68038vj/73229-1.png" alt="Logo" className="w-6 h-6 object-contain" />
+           <div className="bg-white/60 dark:bg-white/10 p-2 rounded-xl backdrop-blur-md border border-slate-200 dark:border-white/5 group-hover:bg-white/80 dark:group-hover:bg-white/20 transition-all shadow-sm text-brand-500 dark:text-white">
+             {/* Custom Infinity Loop SVG */}
+             <svg viewBox="0 0 100 100" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="10" strokeLinecap="round">
+                <path d="M30,50 C30,30 50,30 50,50 C50,70 70,70 70,50 C70,30 50,30 50,50 C50,70 30,70 30,50 Z" />
+             </svg>
            </div>
            <span className="font-bold text-xl sm:text-2xl tracking-tight">
              <span className="text-slate-900 dark:text-white">Strangers</span><span className="text-red-500">In</span><span className="text-slate-900 dark:text-white">Town</span>

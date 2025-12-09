@@ -7,10 +7,35 @@ import { Message, UserProfile } from '../types';
 type RealtimeChannel = ReturnType<typeof supabase.channel>;
 
 const GLOBAL_CHAT_CHANNEL = 'global-chat-room';
+const MAX_GLOBAL_MESSAGES = 50;
+const STORAGE_KEY = 'global_chat_history';
 
 export const useGlobalChat = (userProfile: UserProfile | null, myPeerId: string | null) => {
   const [globalMessages, setGlobalMessages] = useState<Message[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Load from local storage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setGlobalMessages(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to load global chat history", e);
+    }
+  }, []);
+
+  // Save to local storage whenever messages change
+  useEffect(() => {
+    if (globalMessages.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(globalMessages));
+      } catch (e) {
+        console.warn("Global chat storage limit reached", e);
+      }
+    }
+  }, [globalMessages]);
 
   useEffect(() => {
     if (!userProfile) return;
@@ -20,7 +45,14 @@ export const useGlobalChat = (userProfile: UserProfile | null, myPeerId: string 
 
     channel
       .on('broadcast', { event: 'message' }, ({ payload }) => {
-        setGlobalMessages((prev) => [...prev, payload]);
+        setGlobalMessages((prev) => {
+          const updated = [...prev, payload];
+          // FIFO Limit
+          if (updated.length > MAX_GLOBAL_MESSAGES) {
+             return updated.slice(updated.length - MAX_GLOBAL_MESSAGES);
+          }
+          return updated;
+        });
       })
       .subscribe();
 
@@ -51,7 +83,13 @@ export const useGlobalChat = (userProfile: UserProfile | null, myPeerId: string 
     });
 
     // Add to local state (sender: 'me')
-    setGlobalMessages((prev) => [...prev, { ...newMessage, sender: 'me' }]);
+    setGlobalMessages((prev) => {
+      const updated = [...prev, { ...newMessage, sender: 'me' as const }];
+      if (updated.length > MAX_GLOBAL_MESSAGES) {
+         return updated.slice(updated.length - MAX_GLOBAL_MESSAGES);
+      }
+      return updated;
+    });
   }, [userProfile, myPeerId]);
 
   return {

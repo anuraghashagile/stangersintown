@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, RefreshCw, EyeOff, Shield, Image as ImageIcon, Mic, X, Square, AlertTriangle, UserPlus, Check, Bell } from 'lucide-react';
 import { supabase, saveMessageToHistory, fetchChatHistory } from './lib/supabase';
@@ -90,8 +91,8 @@ export default function App() {
     myPeerId, 
     error,
     friends,
+    friendRequests,
     removeFriend,
-    incomingFriendRequest, 
     incomingReaction,
     incomingDirectMessage,
     incomingDirectStatus,
@@ -111,6 +112,7 @@ export default function App() {
     sendVanishMode,
     sendFriendRequest,
     acceptFriendRequest,
+    rejectFriendRequest,
     connect, 
     callPeer, 
     disconnect 
@@ -416,8 +418,8 @@ export default function App() {
                 "flex flex-col items-center gap-6 animate-in fade-in zoom-in-95",
                 messages.length > 0 ? "py-8 mt-8 border-t border-slate-100 dark:border-white/5 pt-8" : "w-full"
               )}>
-                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 mb-2">
-                   <Shield size={40} />
+                <div className="w-20 h-20 bg-red-50 dark:bg-red-900/10 rounded-full flex items-center justify-center text-red-500 mb-2">
+                   <X size={40} />
                 </div>
                 <div className="text-center space-y-2">
                   <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Chat Ended</h3>
@@ -509,31 +511,34 @@ export default function App() {
         />
       )}
 
-      {/* Friend Request Toast */}
-      {incomingFriendRequest && (
+      {/* Friend Request Toast (Kept for instant notification, but user can manage in Social Hub) */}
+      {friendRequests.length > 0 && (
         <div className="fixed top-20 right-4 sm:right-6 z-[60] animate-in slide-in-from-right-10 fade-in duration-300">
           <div className="bg-white dark:bg-[#0A0A0F] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 w-72">
              <div className="flex items-start gap-3">
                <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center font-bold">
-                  {incomingFriendRequest.profile.username[0].toUpperCase()}
+                  {friendRequests[0].profile.username[0].toUpperCase()}
                </div>
                <div>
                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Friend Request</h4>
                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {incomingFriendRequest.profile.username} wants to connect!
+                    {friendRequests[0].profile.username} wants to connect!
                  </p>
+                 {friendRequests.length > 1 && (
+                    <p className="text-[10px] text-brand-500 font-bold mt-1">+{friendRequests.length - 1} others pending</p>
+                 )}
                </div>
              </div>
              <div className="flex gap-2">
                <Button 
-                 onClick={acceptFriendRequest} 
+                 onClick={() => acceptFriendRequest && acceptFriendRequest(friendRequests[0])} 
                  className="flex-1 py-1.5 text-xs h-8"
                >
                  Accept
                </Button>
                <Button 
                  variant="secondary" 
-                 onClick={() => {/* dismiss handled by useHumanChat or we could expose dismiss function */}} 
+                 onClick={() => rejectFriendRequest && rejectFriendRequest(friendRequests[0].peerId)} 
                  className="flex-1 py-1.5 text-xs h-8"
                >
                  Ignore
@@ -623,7 +628,10 @@ export default function App() {
           incomingDirectStatus={incomingDirectStatus} 
           onCloseDirectChat={() => setSessionType('random')} 
           friends={friends} 
+          friendRequests={friendRequests}
           removeFriend={removeFriend}
+          acceptFriendRequest={acceptFriendRequest}
+          rejectFriendRequest={rejectFriendRequest}
         />
       )}
     </div>

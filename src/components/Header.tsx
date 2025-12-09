@@ -79,8 +79,11 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             // Default Header
             <div className="flex items-center gap-3">
-              <div className="text-slate-900 dark:text-white shrink-0 hidden sm:block">
-                <img src="https://i.ibb.co/68038vj/73229-1.png" alt="Logo" className="w-8 h-8 object-contain" />
+              <div className="text-brand-500 dark:text-white shrink-0 hidden sm:block">
+                 {/* Custom Infinity Loop SVG */}
+                 <svg viewBox="0 0 100 100" className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="10" strokeLinecap="round">
+                    <path d="M30,50 C30,30 50,30 50,50 C50,70 70,70 70,50 C70,30 50,30 50,50 C50,70 30,70 30,50 Z" />
+                 </svg>
               </div>
               <div>
                 <h1 className="font-bold text-lg leading-tight tracking-tight">
